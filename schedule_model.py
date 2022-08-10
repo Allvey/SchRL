@@ -37,25 +37,68 @@ class CartpoleModel(parl.Model):
         hid1_size = 128
         hid2_size = 256
         hid3_size = 128
-        hid4_size = 128
+        # hid4_size = 128
 
         self.fc1 = nn.Linear(obs_dim, hid1_size)
         self.fc2 = nn.Linear(hid1_size, hid2_size)
 
         self.fc3 = nn.Linear(hid2_size, hid3_size)
-        self.fc4 = nn.Linear(hid2_size, hid4_size)
+        # self.fc4 = nn.Linear(hid2_size, hid4_size)
 
         self.fc5 = nn.Linear(hid3_size, act_dim)
-        self.fc6 = nn.Linear(hid4_size, 10)
+        # self.fc6 = nn.Linear(hid4_size, 10)
 
     def forward(self, obs):
         h1 = F.relu(self.fc1(obs))
         h2 = F.relu(self.fc2(h1))
 
         h3 = F.relu(self.fc3(h2))
-        h4 = F.relu(self.fc4(h2))
+        # h4 = F.relu(self.fc4(h2))
 
         Q1 = self.fc5(h3)
-        Q2 = self.fc6(h4)
+        # Q2 = self.fc6(h4)
 
-        return Q1, Q2
+        return Q1
+
+
+# class CartpoleModel(parl.Model):
+#     """ Linear network to solve Cartpole problem.
+#
+#     Args:
+#         obs_dim (int): Dimension of observation space.
+#         act_dim (int): Dimension of action space.
+#     """
+#
+#     def __init__(self, obs_dim, act_dim):
+#         super(CartpoleModel, self).__init__()
+#         # hid1_size = 128
+#         # hid2_size = 256
+#         # self.fc1 = nn.Linear(obs_dim, hid1_size)
+#         # self.fc2 = nn.Linear(hid1_size, hid2_size)
+#         # self.fc3 = nn.Linear(hid2_size, act_dim)
+#
+#         hid1_size = 128
+#         hid2_size = 256
+#         hid3_size = 128
+#         hid4_size = 128
+#
+#         self.fc1 = nn.Linear(obs_dim, hid1_size)
+#         self.fc2 = nn.Linear(hid1_size, hid2_size)
+#
+#         self.fc3 = nn.Linear(hid2_size, hid3_size)
+#         self.fc4 = nn.Linear(hid2_size, hid4_size)
+#
+#         self.fc5 = nn.Linear(hid3_size, act_dim)
+#         self.fc6 = nn.Linear(hid4_size, 10)
+#
+#     def forward(self, obs):
+#         h1 = F.relu(self.fc1(obs))
+#         h2 = F.relu(self.fc2(h1))
+#
+#         h3 = F.relu(self.fc3(h2))
+#         h4 = F.relu(self.fc4(h2))
+#
+#         Q1 = self.fc5(h3)
+#         Q2 = self.fc6(h4)
+#
+#         return Q1, Q2

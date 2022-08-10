@@ -52,15 +52,14 @@ class DispatchAgent(parl.Agent):
         """
         sample = np.random.random()
         if sample < self.e_greed:
-            act1 = np.random.randint(self.act_dim)
-            act2 = np.random.randint(10)
+            act = np.random.randint(self.act_dim)
+            # act2 = np.random.randint(10)
 
             # act = np.random.randint(self.act_dim)
-            act = [act1, act2]
         else:
             if np.random.random() < 0.01:
                 # act = np.random.randint(self.act_dim)
-                act = self.env.action_space.sample()
+                act = self.env.action_space.sample()[0]
             else:
                 act = self.predict(obs)
 
@@ -79,9 +78,9 @@ class DispatchAgent(parl.Agent):
         obs = paddle.to_tensor(obs, dtype='float32')
         pred_q = self.alg.predict(obs)
         # act = pred_q.argmax().numpy()[0]
-        act1 = pred_q[0].argmax().numpy()[0]
-        act2 = pred_q[1].argmax().numpy()[0]
-        return [act1, act2]
+        # act1 = pred_q[0].argmax().numpy()[0]
+        act = pred_q.argmax().numpy()[0]
+        return act
 
     def learn(self, obs, act, reward, next_obs, terminal):
         """Update model with an episode data

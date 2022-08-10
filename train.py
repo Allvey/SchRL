@@ -20,7 +20,7 @@ from parl.utils import logger, ReplayMemory
 
 from schedule_model import CartpoleModel
 from schedule_agent import DispatchAgent
-from parl.algorithms.paddle import MDQN, DQN
+from parl.algorithms.paddle import MDQN
 import visdom
 import time
 
@@ -46,20 +46,14 @@ def run_train_episode(agent, env, rpm):
     while True:
         step += 1
         action = agent.sample(obs)
-        # next_obs, reward, done, _, utilization, mass, weight, heu_rpm = env.step([action, 1])
-        next_obs, reward, done, _, utilization, mass, weight, heu_rpm = env.step(action)
-
-        print("agent rl action")
-        print(action)
+        next_obs, reward, done, _, utilization, mass, weight, heu_rpm = env.step([action, 1])
+        # next_obs, reward, done, _, utilization, mass, weight, heu_rpm = env.step(action)
 
         reward_ls.append(reward)
         rpm.append(obs, action, reward, next_obs, done)
 
         for heu_obs, heu_action, heu_reward, heu_next_obs, heu_done in heu_rpm:
-            rpm.append(heu_obs, heu_action, heu_reward,  heu_next_obs, heu_done)
-            print("agent heu action")
-            print(heu_action)
-            print(heu_action[0])
+            rpm.append(heu_obs, heu_action[0], heu_reward,  heu_next_obs, heu_done)
 
         # train model
         if (len(rpm) > MEMORY_WARMUP_SIZE) and (step % LEARN_FREQ == 0):
@@ -92,8 +86,8 @@ def run_evaluate_episodes(agent, env, eval_episodes=5, render=False):
         episode_weight = 0
         while True:
             action = agent.predict(obs)
-            # obs, reward, done, _, utilization, mass, weight, heu_rpm = env.step([action, 1])
-            next_obs, reward, done, _, utilization, mass, weight, heu_rpm = env.step(action)
+            obs, reward, done, _, utilization, mass, weight, heu_rpm = env.step([action, 1])
+            # obs, reward, done, _, utilization, mass, weight, heu_rpm = env.step(action)
             episode_reward += reward
             if render:
                 env.render()
@@ -118,12 +112,12 @@ def main():
     logger.info('obs_dim {}, act_dim {}'.format(obs_dim, act_dim))
 
     # set action_shape = 0 while in discrete control environment
-    # rpm = ReplayMemory(MEMORY_SIZE, obs_dim, 1)
-    rpm = ReplayMemory(MEMORY_SIZE, obs_dim, 2)
+    rpm = ReplayMemory(MEMORY_SIZE, obs_dim, 0)
+    # rpm = ReplayMemory(MEMORY_SIZE, obs_dim, 2)
 
     # build an agent
     model = CartpoleModel(obs_dim=obs_dim, act_dim=act_dim)
-    alg = DQN(model, gamma=GAMMA, lr=LEARNING_RATE)
+    alg = MDQN(model, gamma=GAMMA, lr=LEARNING_RATE)
     agent = DispatchAgent(
         alg, act_dim=act_dim, env=env, e_greed=0.2, e_greed_decrement=1e-6)
 
