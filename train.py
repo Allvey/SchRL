@@ -21,8 +21,11 @@ from parl.utils import logger, ReplayMemory
 from schedule_model import CartpoleModel
 from schedule_agent import DispatchAgent
 from parl.algorithms.paddle import MDQN
+from proportional_per import ProportionalPER
+from per_alg import PrioritizedDQN, MPrioritizedDQN
 import visdom
 import time
+from tqdm import tqdm
 
 LEARN_FREQ = 5  # training frequency
 MEMORY_SIZE = 200000
@@ -35,6 +38,29 @@ GAMMA = 0.99
 
 filename = './result-dec4.txt'
 
+def beta_adder(init_beta, step_size=0.0001):
+    beta = init_beta
+    step_size = step_size
+
+    def adder():
+        nonlocal beta, step_size
+        beta += step_size
+        return min(beta, 1)
+
+    return adder
+
+
+def process_transitions(transitions):
+    transitions = np.array(transitions)
+    batch_obs = np.stack(transitions[:, 0].copy())
+    batch_act = transitions[:, 1].copy()
+    # batch_act = np.array([list(x) for x in batch_act])
+    batch_reward = transitions[:, 2].copy()
+    batch_next_obs = np.expand_dims(np.stack(transitions[:, 3]), axis=1)
+    batch_terminal = transitions[:, 4].copy()
+    batch = (batch_obs, batch_act, batch_reward, batch_next_obs,
+             batch_terminal)
+    return batch
 
 # train an episode
 def run_train_episode(agent, env, rpm):
@@ -44,7 +70,6 @@ def run_train_episode(agent, env, rpm):
     step = 0
     reward_ls = []
     while True:
-        step += 1
         action = agent.sample(obs)
         next_obs, reward, done, _, utilization, mass, weight, heu_rpm = env.step([action, 1])
         # next_obs, reward, done, _, utilization, mass, weight, heu_rpm = env.step(action)
@@ -52,11 +77,15 @@ def run_train_episode(agent, env, rpm):
         reward_ls.append(reward)
         rpm.append(obs, action, reward, next_obs, done)
 
+        step += 1
+
         for heu_obs, heu_action, heu_reward, heu_next_obs, heu_done in heu_rpm:
             rpm.append(heu_obs, heu_action[0], heu_reward,  heu_next_obs, heu_done)
 
+            step += 1
+
         # train model
-        if (len(rpm) > MEMORY_WARMUP_SIZE) and (step % LEARN_FREQ == 0):
+        if step % LEARN_FREQ == 0:
             # s,a,r,s',done
             (batch_obs, batch_action, batch_reward, batch_next_obs,
              batch_done) = rpm.sample_batch(BATCH_SIZE)
@@ -69,7 +98,55 @@ def run_train_episode(agent, env, rpm):
             total_mass = mass
             print(f'reward ls {reward_ls}')
             break
-    return total_reward, total_mass
+    return total_reward, total_mass, step
+
+
+# # train an episode
+# def run_train_episode(agent, env, rpm, mem=None, warmup=False):
+#     total_mass = 0
+#     total_reward = 0
+#     obs = env.reset(train_mode=False)
+#     step = 0
+#     reward_ls = []
+#     while True:
+#         action = agent.sample(obs)
+#         next_obs, reward, done, _, utilization, mass, weight, heu_rpm = env.step([action, 1])
+#
+#         transition = [obs, action, reward, next_obs, done]
+#
+#         step += 1
+#
+#         if warmup:
+#             mem.append(transition)
+#         else:
+#             rpm.store(transition)
+#
+#         for heu_obs, heu_action, heu_reward, heu_next_obs, heu_done in heu_rpm:
+#             transition = [heu_obs, heu_action[0], heu_reward,  heu_next_obs, heu_done]
+#             step += 1
+#
+#             if warmup:
+#                 mem.append(transition)
+#             else:
+#                 rpm.store(transition)
+#
+#         if not warmup:
+#             # train model
+#             if step % LEARN_FREQ == 0:
+#
+#                 beta = get_beta()
+#                 transitions, idxs, sample_weights = rpm.sample(beta=beta)
+#                 batch = process_transitions(transitions)
+#                 cost, delta = agent.learn(*batch, sample_weights)
+#                 rpm.update(idxs, delta)
+#
+#         total_reward += reward
+#         obs = next_obs
+#         if done:
+#             total_mass = mass
+#             print(f'reward ls {reward_ls}')
+#             break
+#     return total_reward, total_mass, step
 
 
 # evaluate 5 episodes
@@ -113,11 +190,13 @@ def main():
 
     # set action_shape = 0 while in discrete control environment
     rpm = ReplayMemory(MEMORY_SIZE, obs_dim, 0)
+    # rpm = ProportionalPER(alpha=0.6, seg_num=BATCH_SIZE, size=MEMORY_SIZE, framestack=1)
     # rpm = ReplayMemory(MEMORY_SIZE, obs_dim, 2)
 
     # build an agent
     model = CartpoleModel(obs_dim=obs_dim, act_dim=act_dim)
-    alg = MDQN(model, gamma=GAMMA, lr=LEARNING_RATE)
+    # alg = MDQN(model, gamma=GAMMA, lr=LEARNING_RATE)
+    alg = MPrioritizedDQN(model, gamma=GAMMA, lr=LEARNING_RATE)
     agent = DispatchAgent(
         alg, act_dim=act_dim, env=env, e_greed=0.2, e_greed_decrement=1e-6)
 
@@ -129,7 +208,18 @@ def main():
 
     # warmup memory
     while len(rpm) < MEMORY_WARMUP_SIZE:
-        run_train_episode(agent, env, rpm)
+        run_train_episode(agent=agent, env=env, rpm=rpm)
+
+    # # Replay memory warmup
+    # total_step = 0
+    # with tqdm(total=MEMORY_SIZE, desc='[Replay Memory Warm Up]') as pbar:
+    #     mem = []
+    #     while total_step < MEMORY_WARMUP_SIZE:
+    #         logger.info('episode:{}'.format(total_step))
+    #         total_reward, total_mass, steps = run_train_episode(agent, env, rpm, mem, True)
+    #         total_step += steps
+    #         pbar.update(steps)
+    # rpm.elements.from_list(mem[:int(MEMORY_WARMUP_SIZE)])
 
     max_episode = 15000
 
@@ -146,7 +236,7 @@ def main():
         train_total_reward = []
         train_total_mass = []
         for i in range(5):
-            total_reward, total_mass = run_train_episode(agent, env, rpm)
+            total_reward, total_mass, _ = run_train_episode(agent, env, rpm)
             train_total_reward.append(total_reward)
             train_total_mass.append(total_mass)
             episode += 1
@@ -183,4 +273,5 @@ def main():
 
 
 if __name__ == '__main__':
+    get_beta = beta_adder(init_beta=0.5)
     main()
