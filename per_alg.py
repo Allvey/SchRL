@@ -292,7 +292,7 @@ class MPrioritizedDQN(parl.Algorithm):
         """
         return self.model(obs)
 
-    def learn(self, obs, action, reward, next_obs, terminal):
+    def learn(self, obs, action, reward, next_obs, terminal, weight):
         """ update the Q function (self.model) with DQN algorithm
         """
         # Q
@@ -310,7 +310,7 @@ class MPrioritizedDQN(parl.Algorithm):
             target = reward + (1 - terminal) * self.gamma * max_v
         # loss = self.mse_loss(pred_value, target)
 
-        loss =layers.square_error_cost(
+        loss = weight * layers.square_error_cost(
             pred_value, target)
         loss = layers.reduce_mean(loss)
 
@@ -321,7 +321,7 @@ class MPrioritizedDQN(parl.Algorithm):
         loss.backward()
         self.optimizer.step()
 
-        return loss
+        return loss, delta
 
     def sync_target(self):
         """ assign the parameters of the training network to the target network

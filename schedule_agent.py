@@ -82,7 +82,7 @@ class DispatchAgent(parl.Agent):
         act = pred_q.argmax().numpy()[0]
         return act
 
-    def learn(self, obs, act, reward, next_obs, terminal):
+    def learn(self, obs, act, reward, next_obs, terminal, weight):
         """Update model with an episode data
 
         Args:
@@ -109,5 +109,6 @@ class DispatchAgent(parl.Agent):
         reward = paddle.to_tensor(reward, dtype='float32')
         next_obs = paddle.to_tensor(next_obs, dtype='float32')
         terminal = paddle.to_tensor(terminal, dtype='float32')
-        loss = self.alg.learn(obs, act, reward, next_obs, terminal)
-        return loss.numpy()[0]
+        weight = paddle.to_tensor(weight, dtype='float32')
+        loss, delta = self.alg.learn(obs, act, reward, next_obs, terminal, weight)
+        return loss.numpy()[0], delta
