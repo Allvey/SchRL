@@ -21,15 +21,16 @@ from parl.utils import logger, ReplayMemory
 from schedule_model import CartpoleModel
 from schedule_agent import DispatchAgent
 from parl.algorithms.paddle import MDQN
-from proportional_per import ProportionalPER
+from proportional_per_sam import ProportionalPER
 from per_alg import PrioritizedDQN, MPrioritizedDQN
 import visdom
 import time
 from tqdm import tqdm
+import paddle
 
 LEARN_FREQ = 5  # training frequency
-MEMORY_SIZE = 200000
-MEMORY_WARMUP_SIZE = 200000
+MEMORY_SIZE = 20000
+MEMORY_WARMUP_SIZE = 20000
 # BATCH_SIZE = 64
 BATCH_SIZE = 1024
 LEARNING_RATE = 0.00001
@@ -37,6 +38,10 @@ LEARNING_RATE = 0.00001
 GAMMA = 0.99
 
 filename = './result-dec4.txt'
+
+
+global sim_batch
+
 
 def beta_adder(init_beta, step_size=0.0001):
     beta = init_beta
@@ -57,8 +62,14 @@ def process_transitions(transitions):
     batch_reward = transitions[:, 2].copy().squeeze()
     batch_next_obs = np.expand_dims(np.stack(transitions[:, 3]), axis=1).squeeze()
     batch_terminal = transitions[:, 4].copy().squeeze()
+    batch_is_sim = transitions[:, 5].copy().squeeze()
+    print("bacth_is_sim")
+    print(sum(batch_is_sim))
+    print(batch_is_sim)
+    global sim_batch
+    sim_batch = sum(batch_is_sim)
     batch = (batch_obs, batch_act, batch_reward, batch_next_obs,
-             batch_terminal)
+             batch_terminal, batch_is_sim)
     return batch
 
 # # train an episode
@@ -101,7 +112,7 @@ def process_transitions(transitions):
 
 
 # train an episode
-def run_train_episode(agent, env, rpm, mem=None, warmup=False):
+def run_train_episode(agent, env, rpm, mem=None, warmup=False, episode=0):
     total_mass = 0
     total_reward = 0
     obs = env.reset(train_mode=False)
@@ -111,23 +122,25 @@ def run_train_episode(agent, env, rpm, mem=None, warmup=False):
         action = agent.sample(obs)
         next_obs, reward, done, _, utilization, mass, weight, heu_rpm = env.step([action, 1])
 
-        transition = [obs, action, reward, next_obs, done]
+        transition = [obs, action, reward, next_obs, done, True]
 
         step += 1
 
         if warmup:
             mem.append(transition)
         else:
-            rpm.store(transition)
+            rpm.store_weight(transition)
+            # rpm.store(transition)
 
         for heu_obs, heu_action, heu_reward, heu_next_obs, heu_done in heu_rpm:
-            transition = [heu_obs, heu_action[0], heu_reward,  heu_next_obs, heu_done]
+            transition = [heu_obs, heu_action[0], heu_reward,  heu_next_obs, heu_done, False]
             step += 1
 
             if warmup:
                 mem.append(transition)
             else:
-                rpm.store(transition)
+                # rpm.store(transition)
+                rpm.store_weight(transition)
 
         if not warmup:
             # train model
@@ -136,7 +149,7 @@ def run_train_episode(agent, env, rpm, mem=None, warmup=False):
                 beta = get_beta()
                 transitions, idxs, sample_weights = rpm.sample(beta=beta)
                 batch = process_transitions(transitions)
-                cost, delta = agent.learn(*batch, sample_weights)
+                cost, delta = agent.learn(*batch, sample_weights, episode)
                 rpm.update(idxs, delta)
 
         total_reward += reward
@@ -180,8 +193,9 @@ def run_evaluate_episodes(agent, env, eval_episodes=5, render=False):
 
 
 def main():
+    global sim_batch
     # env = gym.make('CartPole-v0')
-    wind = visdom.Visdom(env='8-9-single')
+    wind = visdom.Visdom(env='8-14-decay-store-heu')
     env = gym.make('Env-Test-v5')
     obs_dim = env.observation_space.shape[1]    # env.observation_space (1, 7)
     act_dim = env.action_space[0].n    # env.action_space ((shovels + dumps) * 2,)
@@ -228,7 +242,7 @@ def main():
         train_total_reward = []
         train_total_mass = []
         for i in range(5):
-            total_reward, total_mass, _ = run_train_episode(agent, env, rpm)
+            total_reward, total_mass, _ = run_train_episode(agent, env, rpm, episode=episode)
             train_total_reward.append(total_reward)
             train_total_mass.append(total_mass)
             episode += 1
@@ -252,6 +266,9 @@ def main():
         wind.line([train_mass], [episode], win='train_mass', update='append', opts=dict(title='train_mass'))
 
         wind.line([train_reward], [episode], win='train_reward', update='append', opts=dict(title='train_reward'))
+
+        wind.line([sim_batch], [episode], win='sim_batch', update='append', opts=dict(title='sim_batch'))
+
         time.sleep(0.5)
 
         if episode % 100 == 0:

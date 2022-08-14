@@ -82,7 +82,7 @@ class DispatchAgent(parl.Agent):
         act = pred_q.argmax().numpy()[0]
         return act
 
-    def learn(self, obs, act, reward, next_obs, terminal, weight):
+    def learn(self, obs, act, reward, next_obs, terminal, is_sim, weight, episode=0):
         """Update model with an episode data
 
         Args:
@@ -103,6 +103,7 @@ class DispatchAgent(parl.Agent):
         act = np.expand_dims(act, axis=-1)
         reward = np.expand_dims(reward, axis=-1)
         terminal = np.expand_dims(terminal, axis=-1)
+        is_sim = np.expand_dims(is_sim, axis=-1)
 
         obs = paddle.to_tensor(obs, dtype='float32')
         act = paddle.to_tensor(act, dtype='int32')
@@ -110,5 +111,15 @@ class DispatchAgent(parl.Agent):
         next_obs = paddle.to_tensor(next_obs, dtype='float32')
         terminal = paddle.to_tensor(terminal, dtype='float32')
         weight = paddle.to_tensor(weight, dtype='float32')
+        is_sim = paddle.to_tensor(is_sim, dtype='float32')
         loss, delta = self.alg.learn(obs, act, reward, next_obs, terminal, weight)
+        with paddle.no_grad():
+            delta += delta * is_sim * min(np.exp(episode * 0.001 - 3) - 1, 10000)
+        # with paddle.no_grad():
+        #     delta += delta * is_sim * 10000
+        # print("delta")
+        # print(min(np.exp(episode * 0.001 - 2), 10000))
+
+        print("delta")
+        print(min(np.exp(episode * 0.001 - 3) - 1, 10000))
         return loss.numpy()[0], delta

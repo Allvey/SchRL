@@ -20,25 +20,37 @@ class SumTree(object):
         self.capacity = capacity
         self.elements = [None for _ in range(capacity)]
         self.tree = [0 for _ in range(2 * capacity - 1)]
+        self.tree_weight = [0 for _ in range(2 * capacity - 1)]
         self._ptr = 0
+        self._ptr_weight = 0
         self._min = 10
 
     def full(self):
         return all(self.elements)  # no `None` in self.elements
 
-    def add(self, item, priority):
-        self.elements[self._ptr] = item
-        tree_idx = self._ptr + self.capacity - 1
+    # def add(self, item, priority):
+    #     self.elements[self._ptr] = item
+    #     tree_idx = self._ptr + self.capacity - 1
+    #     self.update(tree_idx, priority)
+    #     self._ptr = (self._ptr + 1) % self.capacity
+    #     self._min = min(self._min, priority)
+
+    def add_weight(self, tree_idx, item, priority):
+        self.elements[tree_idx] = item
         self.update(tree_idx, priority)
+        self._ptr_weight = (self._ptr_weight + 1) % 1024
         self._ptr = (self._ptr + 1) % self.capacity
         self._min = min(self._min, priority)
 
     def update(self, tree_idx, priority):
         diff = priority - self.tree[tree_idx]
+        diff_weight = np.exp(-priority) - self.tree_weight[tree_idx]
         self.tree[tree_idx] = priority
+        self.tree_weight[tree_idx] = np.exp(-priority)
         while tree_idx != 0:
             tree_idx = (tree_idx - 1) >> 1
             self.tree[tree_idx] += diff
+            self.tree_weight[tree_idx] += diff_weight
         self._min = min(self._min, priority)
 
     def retrieve(self, value):
@@ -59,6 +71,23 @@ class SumTree(object):
         priority = self.tree[leaf_idx]
         return self.elements[elem_idx], leaf_idx, priority
 
+    def retrieve_weight(self, value):
+        parent_idx = 0
+        while True:
+            left_child_idx = 2 * parent_idx + 1
+            right_child_idx = left_child_idx + 1
+            if left_child_idx >= len(self.tree_weight):
+                leaf_idx = parent_idx
+                break
+            else:
+                if value <= self.tree_weight[left_child_idx]:
+                    parent_idx = left_child_idx
+                else:
+                    value -= self.tree_weight[left_child_idx]
+                    parent_idx = right_child_idx
+        elem_idx = leaf_idx - self.capacity + 1
+        return elem_idx
+
     def from_list(self, lst):
         assert len(lst) == self.capacity
         self.elements = list(lst)
@@ -68,6 +97,10 @@ class SumTree(object):
     @property
     def total_p(self):
         return self.tree[0]
+
+    @property
+    def total_p_weight(self):
+        return self.tree_weight[0]
 
 
 class ProportionalPER(object):
@@ -89,6 +122,7 @@ class ProportionalPER(object):
             self.elements.from_list(init_mem)
         self.framestack = framestack
         self._max_priority = 1.0
+        self._max_priority_weight = 1.0
         self.eps = eps
 
     def _get_stacked_item(self, idx):
@@ -155,3 +189,20 @@ class ProportionalPER(object):
         min_prob = self.size * self.elements._min / self.elements.total_p
         sample_weights = np.power(batch_probs / min_prob, -beta)
         return np.array(items), np.array(indices), sample_weights
+
+    def store_weight(self, item, delta=None):
+        assert len(item) == 6  # (s, a, r, s', terminal)
+        if not delta:
+            delta = self._max_priority
+        assert delta >= 0
+        ps = np.power(delta + self.eps, self.alpha)
+        seg_size = self.elements.total_p_weight / self.seg_num
+        low = self.elements._ptr_weight * seg_size
+        high = (self.elements._ptr_weight + 1) * seg_size
+        sample_value = np.random.uniform(low, high)
+        idx = self.elements.retrieve_weight(sample_value)
+        # if not item[5]:
+        #     sample = np.random.random()
+        #     if sample > 0.1:
+        #         return
+        self.elements.add_weight(idx, item, ps)
