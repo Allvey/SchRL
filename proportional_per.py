@@ -94,7 +94,7 @@ class ProportionalPER(object):
     def _get_stacked_item(self, idx):
         """ For atari environment, we use a 4-frame-stack as input
         """
-        obs, act, reward, next_obs, done = self.elements.elements[idx]
+        obs, act, reward, next_obs, done, is_sim = self.elements.elements[idx]
         stacked_obs = np.zeros((self.framestack, ) + obs.shape)
         stacked_obs[-1] = obs
         for i in range(self.framestack - 2, -1, -1):
@@ -103,10 +103,10 @@ class ProportionalPER(object):
             if d:
                 break
             stacked_obs[i] = obs
-        return (stacked_obs, act, reward, next_obs, done)
+        return (stacked_obs, act, reward, next_obs, done, is_sim)
 
     def store(self, item, delta=None):
-        assert len(item) == 5  # (s, a, r, s', terminal)
+        assert len(item) == 6  # (s, a, r, s', terminal)
         if not delta:
             delta = self._max_priority
         assert delta >= 0
