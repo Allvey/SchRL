@@ -312,6 +312,7 @@ class MPrioritizedDQN(parl.Algorithm):
 
         loss = weight * layers.square_error_cost(
             pred_value, target)
+        # loss = layers.square_error_cost(pred_value, target)
         loss = layers.reduce_mean(loss)
 
         delta = layers.abs(target - pred_value)
