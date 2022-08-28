@@ -28,8 +28,8 @@ import time
 from tqdm import tqdm
 
 LEARN_FREQ = 5  # training frequency
-MEMORY_SIZE = 2000000
-MEMORY_WARMUP_SIZE = 2000000
+MEMORY_SIZE = 200000
+MEMORY_WARMUP_SIZE = 200000
 # BATCH_SIZE = 64
 BATCH_SIZE = 1024
 LEARNING_RATE = 0.00001
@@ -37,6 +37,9 @@ LEARNING_RATE = 0.00001
 GAMMA = 0.99
 
 filename = './result-dec4.txt'
+
+global sim_batch
+
 
 def beta_adder(init_beta, step_size=0.0001):
     beta = init_beta
@@ -60,6 +63,8 @@ def process_transitions(transitions):
     batch_is_sim = transitions[:, 5].copy().squeeze()
     batch = (batch_obs, batch_act, batch_reward, batch_next_obs,
              batch_terminal, batch_is_sim)
+    global sim_batch
+    sim_batch = sum(batch_is_sim)
     return batch
 
 # # train an episode
@@ -182,7 +187,7 @@ def run_evaluate_episodes(agent, env, eval_episodes=5, render=False):
 
 def main():
     # env = gym.make('CartPole-v0')
-    wind = visdom.Visdom(env='8-20-hyd-new')
+    wind = visdom.Visdom(env='8-23-adhyd-new')
     env = gym.make('Env-Test-v5')
     obs_dim = env.observation_space.shape[1]    # env.observation_space (1, 7)
     act_dim = env.action_space[0].n    # env.action_space ((shovels + dumps) * 2,)
@@ -259,6 +264,11 @@ def main():
         wind.line([train_mass], [episode], win='train_mass', update='append', opts=dict(title='train_mass'))
 
         wind.line([train_reward], [episode], win='train_reward', update='append', opts=dict(title='train_reward'))
+
+        global sim_batch
+
+        wind.line([sim_batch], [episode], win='sim_batch', update='append', opts=dict(title='sim_batch'))
+
         time.sleep(0.5)
 
         if episode % 100 == 0:

@@ -114,4 +114,6 @@ class DispatchAgent(parl.Agent):
         is_sim = paddle.to_tensor(is_sim, dtype='float32')
         loss, delta = self.alg.learn(obs, act, reward, next_obs, terminal, weight)
         # loss = self.alg.learn(obs, act, reward, next_obs, terminal)
+        with paddle.no_grad():
+            delta += delta * is_sim * min(max(np.exp(episode * 0.001 - 1.5) - 1, 0), 10000)
         return loss.numpy()[0], delta
