@@ -310,8 +310,12 @@ class MPrioritizedDQN(parl.Algorithm):
             target = reward + (1 - terminal) * self.gamma * max_v
         # loss = self.mse_loss(pred_value, target)
 
-        loss = weight * layers.square_error_cost(
+        loss_t = layers.square_error_cost(
             pred_value, target)
+
+        # loss = weight * loss_t
+        loss = loss_t
+        # loss = layers.square_error_cost(pred_value, target)
         loss = layers.reduce_mean(loss)
 
         delta = layers.abs(target - pred_value)
@@ -321,9 +325,78 @@ class MPrioritizedDQN(parl.Algorithm):
         loss.backward()
         self.optimizer.step()
 
-        return loss, delta
+        return loss, delta, loss_t
 
     def sync_target(self):
         """ assign the parameters of the training network to the target network
+        """
+        self.model.sync_weights_to(self.target_model)
+
+
+class MPrioritizedDoubleDQN(parl.Algorithm):
+    def __init__(self, model, gamma=None, lr=None):
+        """ Double DQN algorithm
+
+        Args:
+            model (parl.Model): model defining forward network of Q function.
+            gamma (float): discounted factor for reward computation.
+        """
+        assert isinstance(gamma, float)
+        assert isinstance(lr, float)
+
+        self.model = model
+        self.target_model = copy.deepcopy(model)
+
+        self.gamma = gamma
+        self.lr = lr
+
+        self.mse_loss = paddle.nn.MSELoss(reduction='mean')
+        self.optimizer = paddle.optimizer.Adam(
+            learning_rate=lr, parameters=self.model.parameters())
+
+    def predict(self, obs):
+        return self.model(obs)
+
+    def learn(self, obs, action, reward, next_obs, terminal, weight):
+
+        # Q
+        pred_values = self.model(obs)
+        action_dim = pred_values.shape[-1]
+        action = paddle.squeeze(action, axis=-1)
+        action_onehot = paddle.nn.functional.one_hot(
+            action, num_classes=action_dim)
+        pred_value = pred_values * action_onehot
+        pred_action_value = paddle.sum(pred_value, axis=1, keepdim=True)
+
+        # calculate the target q value
+        next_action_value = self.model(next_obs)
+        greedy_action = layers.argmax(next_action_value, axis=-1)
+        greedy_action = layers.unsqueeze(greedy_action, axes=[1])
+        greedy_action_onehot = layers.one_hot(greedy_action, action_dim)
+        next_pred_value = self.target_model(next_obs)
+
+        with paddle.no_grad():
+            max_v = layers.reduce_sum(
+                greedy_action_onehot * next_pred_value, dim=1, keep_dim=True)
+            max_v.stop_gradient = True
+
+            target = reward + (1.0 - terminal) * self.gamma * max_v
+            # target = paddle.squeeze(target)
+
+        loss_t = layers.square_error_cost(pred_action_value, target)
+        loss = loss_t
+        loss = layers.reduce_mean(loss)
+
+        delta = layers.abs(target - pred_action_value)
+
+        # optimize
+        self.optimizer.clear_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        return loss, delta, loss_t
+
+    def sync_target(self):
+        """ sync weights of self.model to self.target_model
         """
         self.model.sync_weights_to(self.target_model)

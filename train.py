@@ -22,21 +22,28 @@ from schedule_model import CartpoleModel
 from schedule_agent import DispatchAgent
 from parl.algorithms.paddle import MDQN
 from proportional_per import ProportionalPER
-from per_alg import PrioritizedDQN, MPrioritizedDQN
+from per_alg import PrioritizedDQN, MPrioritizedDQN, MPrioritizedDoubleDQN
 import visdom
 import time
 from tqdm import tqdm
+import paddle
+from collections import deque
+from sklearn.linear_model import LinearRegression
+import datetime
+import csv
 
 LEARN_FREQ = 5  # training frequency
-MEMORY_SIZE = 2000000
-MEMORY_WARMUP_SIZE = 2000000
+MEMORY_SIZE = 2000
+MEMORY_WARMUP_SIZE = 2000
 # BATCH_SIZE = 64
 BATCH_SIZE = 1024
 LEARNING_RATE = 0.00001
 # GAMMA = 0.99
 GAMMA = 0.99
+que = deque([])
 
-filename = './result-dec4.txt'
+global sim_batch
+
 
 def beta_adder(init_beta, step_size=0.0001):
     beta = init_beta
@@ -60,6 +67,8 @@ def process_transitions(transitions):
     batch_is_sim = transitions[:, 5].copy().squeeze()
     batch = (batch_obs, batch_act, batch_reward, batch_next_obs,
              batch_terminal, batch_is_sim)
+    global sim_batch
+    sim_batch = sum(batch_is_sim)
     return batch
 
 # # train an episode
@@ -102,12 +111,14 @@ def process_transitions(transitions):
 
 
 # train an episode
-def run_train_episode(agent, env, rpm, mem=None, warmup=False, episode=0):
+def run_train_episode(agent, env, rpm, mem=None, warmup=False, episode=0, cof=0):
     total_mass = 0
     total_reward = 0
     obs = env.reset(train_mode=False)
     step = 0
     reward_ls = []
+    diff = [0, 0]
+    cost = 0
     while True:
         action = agent.sample(obs)
         next_obs, reward, done, _, utilization, mass, weight, heu_rpm = env.step([action, 1])
@@ -121,14 +132,14 @@ def run_train_episode(agent, env, rpm, mem=None, warmup=False, episode=0):
         else:
             rpm.store(transition)
 
-        for heu_obs, heu_action, heu_reward, heu_next_obs, heu_done in heu_rpm:
-            transition = [heu_obs, heu_action[0], heu_reward,  heu_next_obs, heu_done, False]
-            step += 1
-
-            if warmup:
-                mem.append(transition)
-            else:
-                rpm.store(transition)
+        # for heu_obs, heu_action, heu_reward, heu_next_obs, heu_done in heu_rpm:
+        #     transition = [heu_obs, heu_action[0], heu_reward,  heu_next_obs, heu_done, False]
+        #     step += 1
+        #
+        #     if warmup:
+        #         mem.append(transition)
+        #     else:
+        #         rpm.store(transition)
 
         if not warmup:
             # train model
@@ -137,8 +148,20 @@ def run_train_episode(agent, env, rpm, mem=None, warmup=False, episode=0):
                 beta = get_beta()
                 transitions, idxs, sample_weights = rpm.sample(beta=beta)
                 batch = process_transitions(transitions)
-                cost, delta = agent.learn(*batch, sample_weights, episode)
+                cost, delta, diff = agent.learn(*batch, sample_weights, episode, cof)
                 rpm.update(idxs, delta)
+
+                # is_sim = np.expand_dims(batch[-1], axis=-1)
+                # is_sim = is_sim.astype(float)
+                # loss_t = loss_t.numpy()
+                #
+                # sim_loss = loss_t * is_sim
+                # sim_loss = sum(sim_loss) / sum(is_sim)
+                #
+                # art_loss = loss_t * (1 - is_sim)
+                # art_loss = sum(art_loss) / sum(1 - is_sim)
+                #
+                # diff = [sim_loss, art_loss]
 
         total_reward += reward
         obs = next_obs
@@ -146,7 +169,7 @@ def run_train_episode(agent, env, rpm, mem=None, warmup=False, episode=0):
             total_mass = mass
             print(f'reward ls {reward_ls}')
             break
-    return total_reward, total_mass, step
+    return total_reward, total_mass, step, diff, cost
 
 
 # evaluate 5 episodes
@@ -181,8 +204,12 @@ def run_evaluate_episodes(agent, env, eval_episodes=5, render=False):
 
 
 def main():
+    time_str = datetime.datetime.now().strftime('%d%m%y-%H%M%S')
+    filename = f'./results/result-only-sim-{time_str}.csv'
     # env = gym.make('CartPole-v0')
-    wind = visdom.Visdom(env='8-20-hyd-new')
+    wind = visdom.Visdom(env='11-11-only-sim-1')
+    import gym_sch
+    # env = gym.make('sch-v0')
     env = gym.make('Env-Test-v5')
     obs_dim = env.observation_space.shape[1]    # env.observation_space (1, 7)
     act_dim = env.action_space[0].n    # env.action_space ((shovels + dumps) * 2,)
@@ -195,7 +222,8 @@ def main():
     # build an agent
     model = CartpoleModel(obs_dim=obs_dim, act_dim=act_dim)
     # alg = MDQN(model, gamma=GAMMA, lr=LEARNING_RATE)
-    alg = MPrioritizedDQN(model, gamma=GAMMA, lr=LEARNING_RATE)
+    # alg = MPrioritizedDQN(model, gamma=GAMMA, lr=LEARNING_RATE)
+    alg = MPrioritizedDoubleDQN(model, gamma=GAMMA, lr=LEARNING_RATE)
     agent = DispatchAgent(
         alg, act_dim=act_dim, env=env, e_greed=0.2, e_greed_decrement=1e-6)
 
@@ -215,59 +243,117 @@ def main():
         mem = []
         while total_step < MEMORY_WARMUP_SIZE:
             logger.info('episode:{}'.format(total_step))
-            total_reward, total_mass, steps = run_train_episode(agent, env, rpm, mem, True)
+            total_reward, total_mass, steps, diff, loss = run_train_episode(agent, env, rpm, mem, True)
             total_step += steps
             pbar.update(steps)
     rpm.elements.from_list(mem[:int(MEMORY_WARMUP_SIZE)])
 
-    max_episode = 15000
+    max_episode = 21000
 
     if os.path.exists('E:/Pycharm Projects/RL/SchRL/' + filename):
         os.remove('E:/Pycharm Projects/RL/SchRL/' + filename)
 
-    with open(filename, 'a') as file_object:
-        file_object.write("{} {} {} {} {}\n".format("episode", "eval_reward", "eval_utilization", "eval_mass", "eval_weight"))
+    with open(filename, 'a+', newline='') as file_object:
+        writer = csv.writer(file_object)
+        # writer.writerow("{} {} {} {}\n".format("episode", "sim_batch", "sim_loss", "art_loss"))
+        header = ["episode", "eval_mass", "train_mass", "train_reward", "sim_batch", "loss",
+                                         "sim_loss", "art_loss"]
+        writer.writerow(header)
+        # writer.writerow(
+        #     "{} {} {} {} {} {}\n".format("episode", "eval_mass", "train_mass", "train_mass", "sim_batch", "loss",
+        #                                  "sim_loss", "art_loss"))
 
     # start training
     episode = 0
+    diff = [0, 0]
+    loss = 0
+    cof = 0
+
     while episode < max_episode:
         # train part
         train_total_reward = []
         train_total_mass = []
+
         for i in range(5):
-            total_reward, total_mass, _ = run_train_episode(agent, env, rpm, episode=episode)
+            total_reward, total_mass, _, diff, loss = run_train_episode(agent, env, rpm, episode=episode, cof=cof)
             train_total_reward.append(total_reward)
             train_total_mass.append(total_mass)
             episode += 1
 
-            # print("total_reward", total_reward)
-
         train_reward = np.mean(train_total_reward)
         train_mass = np.mean(train_total_mass)
 
+        que.append(train_reward)
+
+        print("len(que)")
+        print(len(que))
+        if len(que) > 50:
+            que.popleft()
+
+            Y = np.expand_dims(np.array(list(que)), axis=-1)
+            print("XY")
+            print(Y)
+            X = np.expand_dims(np.array([x for x in range(1, len(Y) + 1)]), axis=-1)
+            regr = LinearRegression()
+            regr.fit(X, Y)
+            cof = regr.coef_[0]
+            wind.line([regr.coef_[0]], [episode], win='regr.coef_', update='append', opts=dict(title='regr.coef_'))
+
         # test part
         eval_reward, eval_utilization, eval_mass, eval_weight = run_evaluate_episodes(agent, env, render=False)
+
         logger.info('episode:{}    e_greed:{}   Test reward:{}  Test mass:{} Test weight:{}'.format(
             episode, agent.e_greed, eval_reward, eval_utilization, eval_mass, eval_weight))
-        with open(filename, 'a') as file_object:
-            file_object.write("{} {} {} {} {}\n".format(episode, eval_reward, eval_utilization, eval_mass, eval_weight))
+
+        global sim_batch
+
+        # with open(filename, 'a') as file_object:
+        #     file_object.write("{} {} {} {}\n".format(episode, sim_batch, diff[0], diff[1]))
+
+        with open(filename, 'a+', newline='') as file_object:
+            writer = csv.writer(file_object)
+            data = [episode, eval_mass, train_mass, train_reward, sim_batch, loss,
+                                             diff[0], diff[1]]
+            writer.writerow(data)
+            # writer.writerow(
+            #     "{} {} {} {} {} {}\n".format(episode, eval_mass, train_mass, train_reward, sim_batch, loss,
+            #                                  diff[0], diff[1]))
 
         wind.line([eval_mass], [episode], win='eval_mass', update='append', opts=dict(title='eval_mass'))
-
-        wind.line([eval_reward], [episode], win='eval_reward', update='append', opts=dict(title='eval_reward'))
 
         wind.line([train_mass], [episode], win='train_mass', update='append', opts=dict(title='train_mass'))
 
         wind.line([train_reward], [episode], win='train_reward', update='append', opts=dict(title='train_reward'))
+
+        wind.line([sim_batch], [episode], win='sim_batch', update='append', opts=dict(title='sim_batch'))
+
+        wind.line([loss], [episode], win='loss', update='append', opts=dict(title='loss'))
+
+        wind.line(
+            X=np.column_stack((episode, episode)),
+            Y=np.column_stack((diff[0], diff[1])),
+            win='loss-multi',
+            update='append',
+            opts=dict(legend=["sim_loss", "art_loss"],
+                      showlegend=True,
+                      markers=False,
+                      title='loss-multi',
+                      xlabel='episodes',
+                      ylabel='loss-multi',
+                      fillarea=False),
+        )
+
+        print("sim_loss: ", diff[0], "art_loss: ", diff[1])
+
         time.sleep(0.5)
 
         if episode % 100 == 0:
             # save the parameters to ./model.ckpt
-            save_path = './model.ckpt'
+            save_path = f'./models/model-{time_str}.ckpt'
             agent.save(save_path)
 
     # save the parameters to ./model.ckpt
-    save_path = './model.ckpt'
+    save_path = f'./models/model-{time_str}.ckpt'
     agent.save(save_path)
 
 
