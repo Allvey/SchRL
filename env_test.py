@@ -11,6 +11,8 @@ import gym_sch
 import json
 import numpy as np
 
+print(gym.__version__)
+
 json_file = "config.json"
 
 with open(json_file) as f:
@@ -18,9 +20,11 @@ with open(json_file) as f:
 
 np.random.seed(para_config["seed"])
 
-env = gym.make('sch-v0')
+# env = gym.make('sch-v0')
 
-print(env.observation_space)
+env = gym.make('Env-Test-v5')
+
+print(env.spec.max_episode_steps)
 
 env.reset(False)
 done_n = False
@@ -36,9 +40,3 @@ while not done_n:
     # print("reward:", reward_n)
     # print("is_done", done_n)
 env.close()
-
-import numpy as np
-
-for _ in range(100):
-
-    print(np.random.normal(12, 1))

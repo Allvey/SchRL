@@ -18,7 +18,7 @@ import numpy as np
 import parl
 from parl.utils import logger, ReplayMemory
 
-from schedule_model import CartpoleModel
+from schedule_model import CartpoleModel, CartpoleModelDeeper
 from schedule_agent import DispatchAgent
 from parl.algorithms.paddle import MDQN
 from proportional_per import ProportionalPER
@@ -33,8 +33,8 @@ import datetime
 import csv
 
 LEARN_FREQ = 5  # training frequency
-MEMORY_SIZE = 2000
-MEMORY_WARMUP_SIZE = 2000
+MEMORY_SIZE = 200000
+MEMORY_WARMUP_SIZE = 200000
 # BATCH_SIZE = 64
 BATCH_SIZE = 1024
 LEARNING_RATE = 0.00001
@@ -132,14 +132,14 @@ def run_train_episode(agent, env, rpm, mem=None, warmup=False, episode=0, cof=0)
         else:
             rpm.store(transition)
 
-        # for heu_obs, heu_action, heu_reward, heu_next_obs, heu_done in heu_rpm:
-        #     transition = [heu_obs, heu_action[0], heu_reward,  heu_next_obs, heu_done, False]
-        #     step += 1
-        #
-        #     if warmup:
-        #         mem.append(transition)
-        #     else:
-        #         rpm.store(transition)
+        for heu_obs, heu_action, heu_reward, heu_next_obs, heu_done in heu_rpm:
+            transition = [heu_obs, heu_action[0], heu_reward,  heu_next_obs, heu_done, False]
+            step += 1
+
+            if warmup:
+                mem.append(transition)
+            else:
+                rpm.store(transition)
 
         if not warmup:
             # train model
@@ -167,13 +167,13 @@ def run_train_episode(agent, env, rpm, mem=None, warmup=False, episode=0, cof=0)
         obs = next_obs
         if done:
             total_mass = mass
-            print(f'reward ls {reward_ls}')
+            # print(f'reward ls {reward_ls}')
             break
     return total_reward, total_mass, step, diff, cost
 
 
 # evaluate 5 episodes
-def run_evaluate_episodes(agent, env, eval_episodes=5, render=False):
+def run_evaluate_episodes(agent, env, eval_episodes=1, render=False):
     eval_reward = []
     eval_mass = []
     eval_utilization = []
@@ -205,9 +205,10 @@ def run_evaluate_episodes(agent, env, eval_episodes=5, render=False):
 
 def main():
     time_str = datetime.datetime.now().strftime('%d%m%y-%H%M%S')
-    filename = f'./results/result-only-sim-{time_str}.csv'
+    filename = f'./results/hyb/6430-deeper-{time_str}.csv'
+    save_path = f'./models/hyb/6430-deeper-{time_str}.ckpt'
     # env = gym.make('CartPole-v0')
-    wind = visdom.Visdom(env='11-11-only-sim-1')
+    wind = visdom.Visdom(env='6430-hyd-gain-1117-1')
     import gym_sch
     # env = gym.make('sch-v0')
     env = gym.make('Env-Test-v5')
@@ -220,7 +221,8 @@ def main():
     rpm = ProportionalPER(alpha=0.6, seg_num=BATCH_SIZE, size=MEMORY_SIZE, framestack=1)
 
     # build an agent
-    model = CartpoleModel(obs_dim=obs_dim, act_dim=act_dim)
+    # model = CartpoleModel(obs_dim=obs_dim, act_dim=act_dim)
+    model = CartpoleModelDeeper(obs_dim=obs_dim, act_dim=act_dim)
     # alg = MDQN(model, gamma=GAMMA, lr=LEARNING_RATE)
     # alg = MPrioritizedDQN(model, gamma=GAMMA, lr=LEARNING_RATE)
     alg = MPrioritizedDoubleDQN(model, gamma=GAMMA, lr=LEARNING_RATE)
@@ -248,7 +250,7 @@ def main():
             pbar.update(steps)
     rpm.elements.from_list(mem[:int(MEMORY_WARMUP_SIZE)])
 
-    max_episode = 21000
+    max_episode = 32000
 
     if os.path.exists('E:/Pycharm Projects/RL/SchRL/' + filename):
         os.remove('E:/Pycharm Projects/RL/SchRL/' + filename)
@@ -285,14 +287,14 @@ def main():
 
         que.append(train_reward)
 
-        print("len(que)")
-        print(len(que))
+        # print("len(que)")
+        # print(len(que))
         if len(que) > 50:
             que.popleft()
 
             Y = np.expand_dims(np.array(list(que)), axis=-1)
-            print("XY")
-            print(Y)
+            # print("XY")
+            # print(Y)
             X = np.expand_dims(np.array([x for x in range(1, len(Y) + 1)]), axis=-1)
             regr = LinearRegression()
             regr.fit(X, Y)
@@ -349,11 +351,11 @@ def main():
 
         if episode % 100 == 0:
             # save the parameters to ./model.ckpt
-            save_path = f'./models/model-{time_str}.ckpt'
+            # save_path = f'./models/sim/1010100-model-{time_str}.ckpt'
             agent.save(save_path)
 
     # save the parameters to ./model.ckpt
-    save_path = f'./models/model-{time_str}.ckpt'
+    # save_path = f'./models/sim/1010100-model-{time_str}.ckpt'
     agent.save(save_path)
 
 

@@ -22,7 +22,7 @@ json_file = "config.json"
 with open(json_file) as f:
     para_config = json.load(f)["para"]
 
-np.random.seed(para_config["seed"])
+# np.random.seed(para_config["seed"])
 
 
 class DispatchAgent(parl.Agent):
@@ -123,27 +123,30 @@ class DispatchAgent(parl.Agent):
         is_sim = paddle.to_tensor(is_sim, dtype='float32')
         loss, delta, loss_t = self.alg.learn(obs, act, reward, next_obs, terminal, weight)
 
-        # # is_sim_tt = is_sim.astype(float)
-        # loss_tt = loss_t.numpy()
-        # is_sim_tt = is_sim.numpy().copy()
-        #
-        # sim_loss = loss_tt * is_sim_tt
-        # sim_loss = sum(sim_loss) / sum(is_sim_tt)
-        #
-        # art_loss = loss_tt * (1 - is_sim_tt)
-        # art_loss = sum(art_loss) / sum(1 - is_sim_tt)
-        #
-        # self.gain += max(0, cof * (sim_loss - art_loss))
-        #
-        # print("gain")
-        # print(self.gain)
-        #
-        # # with paddle.no_grad():
-        # #     delta += delta * is_sim * min(max(np.exp(self.gain * 0.01 - 1.5) - 1, 0), 10000)
-        #
+        # is_sim_tt = is_sim.astype(float)
+        loss_tt = loss_t.numpy()
+        is_sim_tt = is_sim.numpy().copy()
+
+        sim_loss = loss_tt * is_sim_tt
+        sim_loss = sum(sim_loss) / sum(is_sim_tt)
+
+        art_loss = loss_tt * (1 - is_sim_tt)
+        art_loss = sum(art_loss) / sum(1 - is_sim_tt)
+
+        self.gain += max(0, cof * (sim_loss - art_loss))
+
         # with paddle.no_grad():
-        #     delta += delta * is_sim * min(max(np.exp(self.gain * 0.05 - 0.2) - 1, 0), 10000)
+        #     delta += delta * is_sim * min(max(np.exp(self.gain * 0.01 - 1.5) - 1, 0), 10000)
 
-        # return loss.numpy()[0], delta, [sim_loss, art_loss]
+        with paddle.no_grad():
+            delta += delta * is_sim * min(max(np.exp(self.gain * 0.01 - 0.2) - 1, 0), 10000)
 
-        return loss.numpy()[0], delta, [0, 0]
+        # with paddle.no_grad():
+        #     delta += delta * is_sim * min(max(np.exp(self.gain * 0.01 - 2) - 1, 0), 10000)
+
+        # with paddle.no_grad():
+        #     delta += delta * is_sim * min(max(self.gain * 0.01, 0), 10000)
+
+        return loss.numpy()[0], delta, [sim_loss, art_loss]
+
+        # return loss.numpy()[0], delta, [0, 0]

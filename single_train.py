@@ -47,8 +47,6 @@ def run_train_episode(agent, env, rpm):
     while True:
         step += 1
         action = agent.sample(obs)
-        print("here123")
-        print(action)
         next_obs, reward, done, _, utilization, mass, weight, heu_rpm = env.step([action, 1])
 
         reward_ls.append(reward)
