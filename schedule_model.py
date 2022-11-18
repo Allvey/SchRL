@@ -34,9 +34,9 @@ class CartpoleModel(parl.Model):
         # self.fc2 = nn.Linear(hid1_size, hid2_size)
         # self.fc3 = nn.Linear(hid2_size, act_dim)
 
-        hid1_size = 128 * 2
-        hid2_size = 256 * 2
-        hid3_size = 128 * 2
+        hid1_size = 128
+        hid2_size = 256
+        hid3_size = 128
         # hid4_size = 128
 
         self.fc1 = nn.Linear(obs_dim, hid1_size)

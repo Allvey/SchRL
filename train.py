@@ -173,7 +173,7 @@ def run_train_episode(agent, env, rpm, mem=None, warmup=False, episode=0, cof=0)
 
 
 # evaluate 5 episodes
-def run_evaluate_episodes(agent, env, eval_episodes=1, render=False):
+def run_evaluate_episodes(agent, env, eval_episodes=5, render=False):
     eval_reward = []
     eval_mass = []
     eval_utilization = []
@@ -205,10 +205,10 @@ def run_evaluate_episodes(agent, env, eval_episodes=1, render=False):
 
 def main():
     time_str = datetime.datetime.now().strftime('%d%m%y-%H%M%S')
-    filename = f'./results/hyb/6430-deeper-{time_str}.csv'
-    save_path = f'./models/hyb/6430-deeper-{time_str}.ckpt'
+    filename = f'./results/hyb/6430-{time_str}.csv'
+    save_path = f'./models/hyb/6430-{time_str}.ckpt'
     # env = gym.make('CartPole-v0')
-    wind = visdom.Visdom(env='6430-hyd-gain-1117-1')
+    wind = visdom.Visdom(env='6430-hyd-gain-1118-4')
     import gym_sch
     # env = gym.make('sch-v0')
     env = gym.make('Env-Test-v5')
@@ -221,8 +221,8 @@ def main():
     rpm = ProportionalPER(alpha=0.6, seg_num=BATCH_SIZE, size=MEMORY_SIZE, framestack=1)
 
     # build an agent
-    # model = CartpoleModel(obs_dim=obs_dim, act_dim=act_dim)
-    model = CartpoleModelDeeper(obs_dim=obs_dim, act_dim=act_dim)
+    model = CartpoleModel(obs_dim=obs_dim, act_dim=act_dim)
+    # model = CartpoleModelDeeper(obs_dim=obs_dim, act_dim=act_dim)
     # alg = MDQN(model, gamma=GAMMA, lr=LEARNING_RATE)
     # alg = MPrioritizedDQN(model, gamma=GAMMA, lr=LEARNING_RATE)
     alg = MPrioritizedDoubleDQN(model, gamma=GAMMA, lr=LEARNING_RATE)
@@ -304,10 +304,10 @@ def main():
         # test part
         eval_reward, eval_utilization, eval_mass, eval_weight = run_evaluate_episodes(agent, env, render=False)
 
-        logger.info('episode:{}    e_greed:{}   Test reward:{}  Test mass:{} Test weight:{}'.format(
-            episode, agent.e_greed, eval_reward, eval_utilization, eval_mass, eval_weight))
-
         global sim_batch
+
+        logger.info('episode:{}   e_greed:{}   Train mass:{}   Train reward:{}   Test mass:{} Sim por:{}'.format(
+            episode, agent.e_greed, train_mass, train_reward, eval_mass, float(sim_batch / 1024)))
 
         # with open(filename, 'a') as file_object:
         #     file_object.write("{} {} {} {}\n".format(episode, sim_batch, diff[0], diff[1]))
@@ -345,7 +345,7 @@ def main():
                       fillarea=False),
         )
 
-        print("sim_loss: ", diff[0], "art_loss: ", diff[1])
+        # print("sim_loss: ", diff[0], "art_loss: ", diff[1])
 
         time.sleep(0.5)
 

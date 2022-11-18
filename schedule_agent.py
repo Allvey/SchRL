@@ -122,6 +122,7 @@ class DispatchAgent(parl.Agent):
         weight = paddle.to_tensor(weight, dtype='float32')
         is_sim = paddle.to_tensor(is_sim, dtype='float32')
         loss, delta, loss_t = self.alg.learn(obs, act, reward, next_obs, terminal, weight)
+        # loss = self.alg.learn(obs, act, reward, next_obs, terminal)
 
         # is_sim_tt = is_sim.astype(float)
         loss_tt = loss_t.numpy()
@@ -135,11 +136,14 @@ class DispatchAgent(parl.Agent):
 
         self.gain += max(0, cof * (sim_loss - art_loss))
 
+        print("gain")
+        print(self.gain)
+
         # with paddle.no_grad():
         #     delta += delta * is_sim * min(max(np.exp(self.gain * 0.01 - 1.5) - 1, 0), 10000)
 
         with paddle.no_grad():
-            delta += delta * is_sim * min(max(np.exp(self.gain * 0.01 - 0.2) - 1, 0), 10000)
+            delta += delta * is_sim * min(max(np.exp(self.gain * 0.05 - 0.2) - 1, 0), 10000)
 
         # with paddle.no_grad():
         #     delta += delta * is_sim * min(max(np.exp(self.gain * 0.01 - 2) - 1, 0), 10000)
