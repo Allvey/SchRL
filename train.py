@@ -205,10 +205,10 @@ def run_evaluate_episodes(agent, env, eval_episodes=5, render=False):
 
 def main():
     time_str = datetime.datetime.now().strftime('%d%m%y-%H%M%S')
-    filename = f'./results/hyb/6430-{time_str}.csv'
-    save_path = f'./models/hyb/6430-{time_str}.ckpt'
+    filename = f'./results/hyb/3210-{time_str}.csv'
+    save_path = f'./models/hyb/3210-{time_str}.ckpt'
     # env = gym.make('CartPole-v0')
-    wind = visdom.Visdom(env='6430-hyd-gain-1118-4')
+    wind = visdom.Visdom(env='3210-hyd-gain-1119')
     import gym_sch
     # env = gym.make('sch-v0')
     env = gym.make('Env-Test-v5')

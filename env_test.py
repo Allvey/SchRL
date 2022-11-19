@@ -122,7 +122,7 @@ class global_var:
     # 矿卡载重(吨)payload = 220
     payload = 220
     # 矿卡数量
-    truck_num = 30
+    truck_num = 10
     # # 电铲数量
     # n = 4
     # # 卸点数量
@@ -216,7 +216,7 @@ class global_var:
     # load_capacity = np.array([1600, 2000]);
     # unload_capacity = np.array([2375]);
 
-    load_capacity = np.array([1600, 2000, 2000])
+    load_capacity = np.array([2000, 2000, 2000])
     unload_capacity = np.array([2375, 2375])
 
     # 电铲装载时间&卸点卸载时间（min）
@@ -619,6 +619,10 @@ def excavator_func(env: simpy.Environment, e_q: simpy.Store, u_q, excavator_id):
 
             load_time = max(1, np.random.normal(loading_time[excavator_id], 1.5))
 
+            # 阻塞装载时间
+            global request_id
+            request_id = yield env.timeout(float(load_time), value=1)  # 进行装载操作
+
             # 装载结束，将装载车辆个数减1
             loading_in_excavator_vehical_num[excavator_id] = (
                     loading_in_excavator_vehical_num[excavator_id] - 1
@@ -950,4 +954,6 @@ env_reset()
 env.run(480)
 
 print(real_dump_mass)
+
+print(goto_excavator_traffic_flow_num)
 

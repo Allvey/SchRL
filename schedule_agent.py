@@ -136,9 +136,6 @@ class DispatchAgent(parl.Agent):
 
         self.gain += max(0, cof * (sim_loss - art_loss))
 
-        print("gain")
-        print(self.gain)
-
         # with paddle.no_grad():
         #     delta += delta * is_sim * min(max(np.exp(self.gain * 0.01 - 1.5) - 1, 0), 10000)
 
